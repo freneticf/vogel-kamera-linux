@@ -15,6 +15,9 @@ import subprocess
 import threading
 import time
 import logging
+import shutil
+import traceback
+import faulthandler
 from pathlib import Path
 from urllib.parse import unquote
 from datetime import datetime, timedelta, timezone
@@ -31,7 +34,7 @@ from flask_limiter.util import get_remote_address
 # ---------------------------------------------------------------------------
 # App-Version
 # ---------------------------------------------------------------------------
-APP_VERSION = '2.3.1'
+APP_VERSION = '2.3.8'
 
 # ---------------------------------------------------------------------------
 # Konfiguration (ausschließlich Umgebungsvariablen)
@@ -48,6 +51,12 @@ SYNC_DEST         = os.environ.get('PI_DAEMON_SYNC_DEST', '')
 SYNC_SSH_KEY      = os.environ.get('PI_DAEMON_SYNC_SSH_KEY', '/certs/id_rsa_sync')
 SETTINGS_FILE     = '/config/sync-config.json'
 SYNC_KEY_FILE     = '/config/sync_rsa'
+
+# ---------------------------------------------------------------------------
+# Gotify Alerts (Self-Hosted Open-Source)
+# ---------------------------------------------------------------------------
+GOTIFY_URL        = os.environ.get('GOTIFY_URL', '')       # http://192.168.178.36:8080 oder http://nas.local:8080
+GOTIFY_TOKEN      = os.environ.get('GOTIFY_TOKEN', '')     # API Token von Gotify
 # Verfügbare Detection-Engines (key → Dateipfad im Container)
 _SCRIPT_BASE = '/home/roimme/vogel-kamera-linux/raspberry-pi-scripts'
 DETECTION_ENGINES: dict = {
@@ -391,17 +400,17 @@ RECORDING_PROFILES = {
     },
     # ── Zeitlupe-Profile (High-FPS Aufnahme, Wiedergabe bei 30fps = Zeitlupe) ─
     'slowmo_720p': {
-        'label':      'Zeitlupe 720p (120fps → 4× langsamer)',
-        'resolution': 'slowmo_720p',  # 1280×720 @ 120fps
-        'fps':        120,
-        'bitrate':    12000,
+        'label':      'Zeitlupe HQ (2304×1296 @ 56fps → 1.9× langsamer) ✨',
+        'resolution': 'slowmo_hq',  # 2304×1296 @ 56fps - Bessere Qualität
+        'fps':        56,
+        'bitrate':    18000,
         'slowmotion': True,
     },
     'slowmo_1080p': {
-        'label':      'Zeitlupe 1080p (60fps → 2× langsamer)',
-        'resolution': 'slowmo_1080p',  # 1920×1080 @ 60fps
-        'fps':        60,
-        'bitrate':    16000,
+        'label':      'Zeitlupe 120fps (1536×864 @ 120fps → 4× langsamer)',
+        'resolution': 'slowmo_fast',  # 1536×864 @ 120fps - Ultra-Highspeed
+        'fps':        120,
+        'bitrate':    14000,
         'slowmotion': True,
     },
 }
@@ -413,8 +422,8 @@ _RESOLUTION_MAP = {
     '1080p':       (1920,  1080),
     '2k':          (2560,  1440),
     '4k':          (4096,  2160),
-    'slowmo_720p': (1280,   720),   # 1280×720 @ 120fps
-    'slowmo_1080p':(1920,  1080),   # 1920×1080 @ 60fps
+    'slowmo_hq':   (2304,  1296),   # 2304×1296 @ 56fps - Bessere Qualität
+    'slowmo_fast': (1536,   864),   # 1536×864 @ 120fps - Ultra-Highspeed
 }
 
 # Persistente Aufnahme-Einstellungen (werden via API gesetzt)
@@ -460,6 +469,76 @@ def _check_config() -> None:
     if missing:
         logger.critical('Fehlende Pflicht-Umgebungsvariablen: %s', ', '.join(missing))
         sys.exit(1)
+
+
+# ---------------------------------------------------------------------------
+# Thread-Monitoring und Deadlock-Erkennung
+# ---------------------------------------------------------------------------
+_thread_state: dict = {}                    # {thread_name: {state: str, started_at: float, lock_acquired: bool}}
+_thread_state_lock = threading.Lock()
+_last_thread_dump_time: float = 0.0
+_THREAD_DUMP_INTERVAL: float = 30.0         # Sekunden zwischen Thread-Dumps (nur im Fehlerfall)
+
+def _send_gotify_alert(status: str, reason: str) -> None:
+    """Sendet Alert an Gotify Server wenn Container unhealthy wird.
+    
+    Gotify ist eine selbst-gehostete, open-source Alert-Plattform.
+    Konfiguration über Umgebungsvariablen:
+      GOTIFY_URL: URL zum Gotify Server (z.B. http://192.168.178.36:8080)
+      GOTIFY_TOKEN: API Token (generiert im Gotify Dashboard)
+    """
+    if not GOTIFY_URL or not GOTIFY_TOKEN:
+        return
+    
+    try:
+        import requests
+        url = f'{GOTIFY_URL.rstrip("/")}/message'
+        headers = {'Authorization': f'Bearer {GOTIFY_TOKEN}'}
+        data = {
+            'title': f'🚨 pi-daemon {status}',
+            'message': reason,
+            'priority': 10 if status == 'unhealthy' else 5
+        }
+        resp = requests.post(url, json=data, headers=headers, timeout=5)
+        if resp.status_code in (200, 201):
+            logger.info(f'Gotify-Alert gesendet: {status}')
+        else:
+            logger.warning(f'Gotify-Alert fehlgeschlagen (HTTP {resp.status_code}): {resp.text[:200]}')
+    except Exception as exc:
+        logger.warning(f'Gotify-Alert Exception: {exc}')
+
+
+def _log_thread_status(label: str = "Thread-Status", critical: bool = False) -> None:
+    """Logged den Status aller Threads (für Deadlock-Diagnostik)."""
+    global _last_thread_dump_time
+    now = time.monotonic()
+    if not critical and (now - _last_thread_dump_time < _THREAD_DUMP_INTERVAL):
+        return
+    _last_thread_dump_time = now
+    
+    msg_lines = [f"\n{'='*70}"]
+    msg_lines.append(f"{label} ({datetime.now().isoformat()})")
+    msg_lines.append(f"PID: {os.getpid()}, Active Threads: {threading.active_count()}")
+    msg_lines.append("-" * 70)
+    
+    for tid, frame in sys._current_frames().items():
+        thread = next((t for t in threading.enumerate() if t.ident == tid), None)
+        thread_name = thread.name if thread else f"unknown-{tid}"
+        
+        # Stack Trace ausgeben
+        stack_str = ''.join(traceback.format_list(traceback.extract_stack(frame)))
+        msg_lines.append(f"\n[{thread_name}] TID={tid}")
+        for line in stack_str.split('\n')[-5:]:  # Letzten 5 Stack-Frames
+            if line.strip():
+                msg_lines.append(f"  {line}")
+    
+    msg_lines.append(f"\n{'='*70}")
+    full_msg = '\n'.join(msg_lines)
+    
+    if critical:
+        logger.error(full_msg)
+    else:
+        logger.debug(full_msg)
 
 
 # ---------------------------------------------------------------------------
@@ -877,8 +956,8 @@ class CameraManager:
 
     @staticmethod
     def record_audio(duration: int = 60):
-        """Startet eine reine Audio-Aufnahme (kein Video) mit arecord.
-        Orientiert an Legacy-Skript ai-had-audio-remote-param-vogel-libcamera-single.py.
+        """Startet eine reine Audio-Aufnahme (kein Video) mit ffmpeg (oder arecord als Fallback).
+        Nutzt 48kHz und ggf. Audio-Verarbeitung.
         Gibt (ok, wav_path_or_error) zurück."""
         with _lock:
             if state.recording_running:
@@ -898,14 +977,6 @@ class CameraManager:
             dur_min = max(1, round(duration / 60))
             wav = recording_dir / f'{ts}_audio_{dur_min}min.wav'
 
-            # arecord: 44.1 kHz, Mono, 16-bit signed LE, WAV-Format
-            # Kein -D: nutzt ALSA-Default (erstes verfügbares Mikrofon)
-            # Kein -d Flag: Dauer via Python-Sleep + Kill (analog Video)
-            audio_cmd = [
-                'arecord', '-f', 'S16_LE', '-r', '44100', '-c', '1', '-t', 'wav',
-                str(wav),
-            ]
-
             # Mic-Eingangspegel sicherstellen
             try:
                 subprocess.run(
@@ -915,65 +986,138 @@ class CameraManager:
             except Exception:
                 pass
 
-            logger.info('Audio-Only-Recording gestartet: %ds → %s', duration, wav.name)
-            audio_proc = subprocess.Popen(
-                audio_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+            # ── Versuche ffmpeg zuerst (mit 48kHz und einfachen Filtern) ──
+            use_ffmpeg = True
+            ffmpeg_available = shutil.which('ffmpeg') is not None
+            
+            if not ffmpeg_available:
+                logger.warning('ffmpeg nicht verfügbar – verwende arecord stattdessen')
+                use_ffmpeg = False
+
+            if use_ffmpeg:
+                logger.info('Audio-Recording mit ffmpeg gestartet: %ds → %s (48kHz)', duration, wav.name)
+                audio_cmd = [
+                    'ffmpeg',
+                    '-hide_banner',
+                    '-loglevel', 'warning',
+                    '-f', 'alsa',
+                    '-i', 'default',
+                    '-t', str(duration),
+                    '-af', 'highpass=f=80,volume=1.5',  # Einfache, robuste Filter
+                    '-acodec', 'pcm_s16le',
+                    '-ar', '48000',  # 48kHz
+                    '-ac', '1',
+                    '-y',
+                    str(wav),
+                ]
+                logger.debug('ffmpeg cmd: %s', ' '.join(audio_cmd))
+                
+                audio_proc = subprocess.Popen(
+                    audio_cmd,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                    bufsize=1
+                )
+            else:
+                # Fallback: arecord mit 48kHz
+                logger.info('Audio-Recording mit arecord gestartet: %ds → %s (48kHz)', duration, wav.name)
+                audio_cmd = [
+                    'arecord',
+                    '-f', 'S16_LE',
+                    '-r', '48000',  # 48kHz (nicht default 44100)
+                    '-c', '1',
+                    '-t', 'wav',
+                    '-d', str(duration),
+                    str(wav),
+                ]
+                logger.debug('arecord cmd: %s', ' '.join(audio_cmd))
+                
+                audio_proc = subprocess.Popen(
+                    audio_cmd,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                    bufsize=1
+                )
 
             with _lock:
                 state.recording_process = audio_proc
 
-            # Dauer abwarten (1s-Schritte für sofortigen Kill-Response)
+            # Dauer abwarten (mit Fehler-Überwachung)
+            stderr_lines = []
             deadline = time.monotonic() + duration
             while time.monotonic() < deadline:
-                if audio_proc.poll() is not None:
-                    logger.warning('arecord vorzeitig beendet (rc=%d)', audio_proc.returncode)
+                rc = audio_proc.poll()
+                if rc is not None:
+                    # Prozess beendet (Fehler oder OK)
+                    logger.warning('%s beendet mit rc=%d', 'ffmpeg' if use_ffmpeg else 'arecord', rc)
+                    try:
+                        remaining = audio_proc.stderr.read()
+                        if remaining:
+                            stderr_lines.append(remaining)
+                    except:
+                        pass
                     break
                 time.sleep(1)
 
-            # Prozess explizit stoppen
+            # Prozess explicit stoppen (falls noch läuft)
             if audio_proc.poll() is None:
                 try:
                     _kill_process_group(audio_proc, timeout=5)
+                    logger.info('Audio-Prozess beendet')
                 except Exception as e:
-                    logger.warning('arecord Kill fehlgeschlagen: %s', e)
+                    logger.warning('Audio-Prozess Kill fehlgeschlagen: %s', e)
 
             with _lock:
                 state.recording_process = None
 
-            # stderr auswerten
+            # stderr vollständig auslesen
             try:
-                stderr_out = audio_proc.stderr.read().decode('utf-8', errors='replace').strip()
+                stderr_remaining = audio_proc.stderr.read()
+                if stderr_remaining:
+                    stderr_lines.append(stderr_remaining)
             except Exception:
-                stderr_out = ''
+                pass
+            
+            stderr_out = ''.join(stderr_lines).strip()
             if stderr_out:
-                for line in stderr_out.splitlines():
+                for line in stderr_out.splitlines()[:5]:  # Nur erste 5 Zeilen loggen
                     if 'error' in line.lower():
-                        logger.error('arecord: %s', line)
+                        logger.error('Audio-Prozess: %s', line)
                     else:
-                        logger.debug('arecord: %s', line)
+                        logger.debug('Audio-Prozess: %s', line)
 
             time.sleep(1)  # Dateisystem-Flush
 
+            # Überprüfe ob Datei erstellt wurde
             if wav.exists() and wav.stat().st_size > 4096:
-                logger.info('Audio-Aufnahme abgeschlossen: %s (%.1f MB)',
-                            wav.name, wav.stat().st_size / 1048576)
+                file_size_mb = wav.stat().st_size / 1048576
+                logger.info('Audio-Aufnahme erfolgreich: %s (%.2f MB)', wav.name, file_size_mb)
                 CameraManager.transfer_all(str(wav))
                 return True, str(wav)
 
-            err = f'WAV-Datei nicht erstellt oder leer ({wav.name})'
+            # Datei nicht erstellt oder zu klein
+            err = f'Audio-Datei nicht erstellt oder zu klein: {wav.name}'
             if stderr_out:
-                err = next((l for l in stderr_out.splitlines() if 'error' in l.lower()),
-                           stderr_out.splitlines()[-1] if stderr_out else err)
+                # Fehler aus stderr
+                error_lines = [l for l in stderr_out.splitlines() if 'error' in l.lower()]
+                if error_lines:
+                    err = error_lines[0]
+                elif stderr_out.splitlines():
+                    err = stderr_out.splitlines()[-1]
+            
             logger.error(err)
             with _lock:
                 state.last_error = err
             return False, err
 
         except Exception as exc:
-            logger.error('Audio-Aufnahme fehlgeschlagen: %s', exc)
+            err = f'Audio-Aufnahme Fehler: {exc}'
+            logger.error(err)
             with _lock:
-                state.last_error = str(exc)
-            return False, str(exc)
+                state.last_error = err
+            return False, err
 
         finally:
             with _lock:
@@ -1272,6 +1416,99 @@ def api_login():
     token = _make_token(request.remote_addr)
     logger.info('Login von %s', request.remote_addr)
     return jsonify({'token': token, 'expires_in': TOKEN_EXPIRY_H * 3600})
+
+
+# ── Health-Check (OHNE Auth für Docker) ─────────────────────────────────────────
+
+_last_health_response: dict = {
+    'version': APP_VERSION,
+    'status': 'ok',
+    'system': {},
+    'cached_at': 0.0,
+}
+_last_health_response_lock = threading.Lock()
+_HEALTH_CACHE_TTL: float = 2.0  # Sekunden – Cache Health-Response, um Blocking zu vermeiden
+
+# Alert-Tracking für WhatsApp
+_consecutive_health_failures: int = 0
+_last_alert_time: float = 0.0
+_ALERT_THRESHOLD: int = 5  # Consecutive Failures bevor Alert
+_ALERT_COOLDOWN: float = 300.0  # Sekunden zwischen Alerts (5 Minuten)
+
+def _update_health_cache() -> None:
+    """Aktualisiert den Health-Cache im Hintergrund (wird von daemon aufgerufen)."""
+    global _last_health_response, _consecutive_health_failures, _last_alert_time
+    try:
+        start = time.monotonic()
+        mem = psutil.virtual_memory()
+        disk = psutil.disk_usage(VIDEO_BASE_DIR if Path(VIDEO_BASE_DIR).exists() else '/')
+        elapsed = time.monotonic() - start
+        
+        system = {
+            'mem_used_mb': round(mem.used / 1_048_576),
+            'mem_total_mb': round(mem.total / 1_048_576),
+            'disk_free_gb': round(disk.free / 1_073_741_824, 1),
+        }
+        
+        if elapsed > 0.5:
+            logger.warning(f'Health-Cache-Update dauerte {elapsed:.2f}s (psutil blockiert?)')
+            _log_thread_status("psutil blockiert Health-Check", critical=True)
+        
+        with _last_health_response_lock:
+            _last_health_response = {
+                'version': APP_VERSION,
+                'status': 'ok',
+                'system': system,
+                'cached_at': time.monotonic(),
+                'threads_active': threading.active_count(),
+            }
+            _consecutive_health_failures = 0  # Reset bei Erfolg
+    except Exception as exc:
+        logger.error(f'Health-Cache-Update fehlgeschlagen: {exc}')
+        _consecutive_health_failures += 1
+        
+        # Sende Gotify-Alert wenn zu viele Fehler hintereinander
+        now = time.monotonic()
+        if _consecutive_health_failures >= _ALERT_THRESHOLD and (now - _last_alert_time) > _ALERT_COOLDOWN:
+            _send_gotify_alert('unhealthy', f'Health-Cache konnte {_consecutive_health_failures}x nicht aktualisiert werden: {exc}')
+            _last_alert_time = now
+        
+        with _last_health_response_lock:
+            _last_health_response['status'] = 'warn'
+            _last_health_response['error'] = str(exc)
+
+@app.route('/api/health')
+def api_health():
+    """Unauthentifizierter Health-Check Endpoint für Docker Health-Check.
+    
+    Nutzt gecachte Systeminfo, um zu vermeiden dass psutil blockiert.
+    Wenn Cache älter als TTL, wird 503 zurückgegeben (statt zu blockieren).
+    """
+    try:
+        with _last_health_response_lock:
+            now = time.monotonic()
+            cache_age = now - _last_health_response.get('cached_at', 0)
+            
+            # Cache ist zu alt → lieber 503 als blockieren
+            if cache_age > 5.0:
+                logger.warning(f'Health-Check: Cache zu alt ({cache_age:.1f}s) – 503')
+                _log_thread_status("Health-Check: Cache zu alt", critical=True)
+                return jsonify({
+                    'status': 'degraded',
+                    'error': 'System-Info outdated (psutil blocked?)',
+                    'version': APP_VERSION,
+                }), 503
+            
+            response = _last_health_response.copy()
+        
+        return jsonify(response), 200
+    except Exception as exc:
+        logger.error(f'Health-Check Exception: {exc}')
+        return jsonify({
+            'status': 'error',
+            'error': str(exc),
+            'version': APP_VERSION,
+        }), 500
 
 
 # ── Status ────────────────────────────────────────────────────────────────────
@@ -2130,6 +2367,26 @@ if __name__ == '__main__':
     watchdog.start()
 
     threading.Thread(target=_hailo_temp_updater, daemon=True, name='hailo-temp').start()
+    
+    # Thread-Monitoring Daemon: überwacht Deadlocks und aktualisiert Health-Cache
+    def _thread_monitor_daemon():
+        """Monitort Thread-Status und aktualisiert Health-Cache regelmäßig."""
+        faulthandler.enable()  # Stacktrace auf SIGUSR1
+        while True:
+            try:
+                time.sleep(2)  # Alle 2 Sekunden
+                _update_health_cache()
+                
+                # Prüfe ob Threads blockiert sind (vereinfachte Heuristik)
+                active = threading.active_count()
+                if active > 50:  # Zu viele Threads?
+                    logger.warning(f'Viele aktive Threads: {active} (möglicher Thread-Leak?)')
+                    _log_thread_status("Zu viele Threads", critical=False)
+            except Exception as exc:
+                logger.debug(f'Thread-Monitor-Fehler: {exc}')
+    
+    monitor = threading.Thread(target=_thread_monitor_daemon, daemon=True, name='thread-monitor')
+    monitor.start()
 
     ssl_ctx = (CERT_FILE, KEY_FILE) if Path(CERT_FILE).exists() and Path(KEY_FILE).exists() else None
     if ssl_ctx is None:

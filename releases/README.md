@@ -4,30 +4,42 @@ Hier finden Sie die vollständige Dokumentation aller Versionen des vogel-kamera
 
 ## 🚀 Aktuelle Version
 
-**Version 2.2.1** - "Web-GUI Verbesserungen & HTTPS-Komfort" 🆕
+**Version 2.3.5** - "Slow-Motion Upgrade · High-Performance Recording" 🎬
 - **Branch:** main
-- **Release Notes:** [v2.2.1/RELEASE_NOTES_v2.2.1.md](v2.2.1/RELEASE_NOTES_v2.2.1.md)
-- **Release Date:** 2026-03-15
+- **Release Notes:** [v2.3.5/RELEASE_NOTES_v2.3.5.md](v2.3.5/RELEASE_NOTES_v2.3.5.md)
+- **Release Date:** 2026-05-05
 - **🆕 Features:**
-  - 🆕 **Versions-Badge** in der Web-GUI-Topbar (live aus `/api/status`)
-  - 🆕 **Projekt-Logo** auf Login-Seite (220 px) und Topbar (32 px)
-  - 🆕 **HTTPS-Komfort:** `GET /cert.pem` Route + Chrome-Importanleitung auf der Login-Seite
-  - 🆕 **Hilfe-Modal** um Audio-Only und Live-Vorschau Sektionen ergänzt
-- **🐛 Bugfixes:**
-  - E2E-Test Profilname `FHD` → `normal_hd` (HTTP 400 behoben)
-  - Dockerfile `--platform`-Warnung `RedundantTargetPlatform` behoben
-- **Kompatibel:** Raspberry Pi OS Trixie (Debian 13)
+  - 🎬 **Zeitlupen-Modus HQ:** 2304×1296 @ 56fps (1.9× langsamer)
+  - 🎬 **Zeitlupen-Modus 120fps:** 1536×864 @ 120fps (4× langsamer)
+  - 🎬 **Beide Modi im Web-Dashboard wählbar**
+  - 📊 **Performance optimiert** (~60-75% CPU je nach Modus)
+- **🔧 Verbesserungen:**
+  - Bessere Qualität bei Zeitlupen-Aufnahmen
+  - Automatische Auflösungswahl für höhere FPS
+  - Beide Slowmo-Varianten persistent speicherbar
+- **Kompatibel:** Raspberry Pi OS, Gentoo Linux
 
 ## 📦 Vorherige Versionen
 
-### Version 2.2.0 - "Docker & Ansible Build-Infrastruktur"
-- **Release Notes:** [v2.2.0/RELEASE_NOTES_v2.2.0.md](v2.2.0/RELEASE_NOTES_v2.2.0.md)
-- **Release Date:** 2026-03-13
-- **Features:**
-  - 🐳 Ansible-Rolle `build-host` für Gentoo Build-Rechner
-  - 🐳 Neuer `--setup-host` Befehl in `build_and_deploy.sh`
-  - 🐳 Playbook `setup-build-host.yml` für lokalen Cross-Compilation-Host
-  - 📖 Vollständige `ansible/README.md` + `docker/README.md`
+### Version 2.3.4 - "Audio Quality Upgrade · Professional Recording" 🎤
+- **Release Notes:** [v2.3.4/RELEASE_NOTES_v2.3.4.md](v2.3.4/RELEASE_NOTES_v2.3.4.md)
+- **Release Date:** 2026-05-05
+- **🆕 Features:**
+  - 🎤 **Professionelle Audio-Aufnahme mit ffmpeg** (statt arecord)
+  - 🎤 **48kHz Sample-Rate überall** (Video+Audio, Audio-only, Fallback)
+  - 🎤 **Audio-Filterung:** Hochpass @ 80Hz + Volume 1.5x
+  - 📚 **AUDIO_QUALITY_IMPROVEMENTS.md** + **AUDIO_UPGRADE_CHECKLIST.md**
+- **🔧 Verbesserungen:**
+  - Einheitliche Audio-Pipeline für alle Modi
+  - Robustere Fehlerbehandlung (Non-blocking I/O)
+  - Besseres Logging in Web-UI
+
+### Version 2.3.3 - "Health-Check System · Daemon Resilience" 🏥
+- **Release Notes:** [v2.3.3/RELEASE_NOTES_v2.3.3.md](v2.3.3/RELEASE_NOTES_v2.3.3.md)
+- **Release Date:** 2026-05-04
+
+### Version 2.3.0 - "NPU Throttle-Level · Dashboard Stats · Favicon"
+- **Release Notes:** [v2.3.0/RELEASE_NOTES_v2.3.0.md](v2.3.0/RELEASE_NOTES_v2.3.0.md)
 - **Kompatibel:** Raspberry Pi OS Trixie (Debian 13)
 
 ### Version 2.1.1 - "Graceful Shutdown & Detect-and-Record Mode"

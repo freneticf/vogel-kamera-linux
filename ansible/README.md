@@ -61,11 +61,139 @@ nano ansible/.env
 # Einmalig: Vault-Passwort hinterlegen
 echo 'MeinVaultPasswort' > ~/.pi-daemon-vault-pass && chmod 600 ~/.pi-daemon-vault-pass
 
+# Einmalig: Sudo-Authentifizierung für Docker (optional, empfohlen)
+bash ansible/setup-sudo-nopasswd.sh
+# → Danach keine Passwort-Abfragen mehr beim Build!
+
 # Erstdeployment (baut Image, überträgt, richtet Pi ein)
 cd ansible && bash build_and_deploy.sh --install
 
 # Normales Update (Image neu bauen + ausrollen)
 cd ansible && bash build_and_deploy.sh --update
+```
+
+---
+
+### Sudo-Authentifizierung ohne Passwort (Optional, empfohlen)
+
+Der Build benötigt `sudo` für das Neustarten des Docker-Daemon beim Aktualisieren der binfmt-Handler
+(QEMU-Emulatoren). Dies ist auf Gentoo notwendig für stabile ARM64-Cross-Compilation.
+
+**Problem (ohne Setup):**
+- Build fragt jedes Mal nach `sudo` Passwort
+- Bei CI/CD-Automation nicht möglich (unattended Build)
+- Manuell lästig bei häufigen Updates
+
+**Lösung:** Spezifische `systemctl`-Befehle mit `NOPASSWD` erlauben (sicher & standard).
+
+#### Automatische Einrichtung (empfohlen)
+
+```bash
+# Einmalig: setup-sudo-nopasswd.sh ausführen
+bash ansible/setup-sudo-nopasswd.sh
+
+# Beispiel-Output:
+# 🔧 Richte passwordlose Sudo-Befehle für Docker ein...
+# ✅ /etc/sudoers.d/vogel-kamera-buildx erstellt
+# ✅ Einrichtung abgeschlossen!
+```
+
+**Was das Script macht:**
+1. Erstellt sichere `/etc/sudoers.d/vogel-kamera-buildx`
+2. Nur `systemctl` Befehle erlaubt: `restart`, `start`, `status`, `enable`
+3. Nur für `%docker` Gruppe (falls Ihr User drin ist)
+4. Chmod 0440 (sudoers-Standard)
+5. Verifiziert mit `sudo -l` nach der Einrichtung
+
+#### Manuelle Einrichtung
+
+Falls Sie das Script nicht nutzen möchten:
+
+```bash
+# Option 1: Mit visudo (empfohlen – syntax-checked)
+sudo visudo -f /etc/sudoers.d/vogel-kamera-buildx
+# Dann folgende Zeilen hinzufügen:
+```
+
+```sudoers
+# Vogel-Kamera Linux - Docker Buildx Build-Host Setup
+# Erlaubt passwordloses Neustarten von Docker (nötig für binfmt-Handler)
+
+Defaults env_keep += "DOCKER_HOST"
+Defaults secure_path = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+
+# Build-Host: Docker systemctl Befehle (ohne Passwort)
+%docker ALL=(ALL) NOPASSWD: /bin/systemctl restart docker
+%docker ALL=(ALL) NOPASSWD: /bin/systemctl start docker
+%docker ALL=(ALL) NOPASSWD: /bin/systemctl status docker
+%docker ALL=(ALL) NOPASSWD: /bin/systemctl enable docker
+```
+
+**Option 2: Direkt mit tee (schnell, aber ohne Syntax-Check)**
+
+```bash
+sudo tee /etc/sudoers.d/vogel-kamera-buildx > /dev/null <<'EOF'
+%docker ALL=(ALL) NOPASSWD: /bin/systemctl restart docker
+%docker ALL=(ALL) NOPASSWD: /bin/systemctl start docker
+%docker ALL=(ALL) NOPASSWD: /bin/systemctl status docker
+%docker ALL=(ALL) NOPASSWD: /bin/systemctl enable docker
+EOF
+
+sudo chmod 0440 /etc/sudoers.d/vogel-kamera-buildx
+```
+
+#### Verifizierung
+
+Nach der Einrichtung überprüfen:
+
+```bash
+# Prüfe, ob Einträge sichtbar sind
+sudo -l | grep docker
+# → Sollte die NOPASSWD-Einträge anzeigen
+
+# Test: Sollte ohne Passwort funktionieren
+sudo systemctl is-active docker
+# ✅ OK, wenn: active (erfolgreich ohne Passwort)
+```
+
+#### Sicherheit & Besonderheiten
+
+**Warum ist das sicher?**
+- ✅ Nur Docker `systemctl` Befehle erlaubt (nicht beliebige Root-Befehle)
+- ✅ Nicht im Script oder `.env` gespeichert (nicht im RAM bei Prozess-Dump)
+- ✅ Standard für professionelle Automatisierung & CI/CD
+- ✅ Reversibl: `sudo rm /etc/sudoers.d/vogel-kamera-buildx` deaktiviert alles
+
+**Nur für docker Gruppe?**
+Falls Sie nicht in der `docker`-Gruppe sind, ändern Sie die erste Zeile:
+```sudoers
+# Für einzelnen User statt Gruppe:
+imme ALL=(ALL) NOPASSWD: /bin/systemctl restart docker
+```
+
+**Was, wenn Fehler nach Setup?**
+
+```bash
+# sudoers-Syntax-Fehler beheben (falls mit tee gemacht)
+sudo visudo -c
+# → "parsed OK" = gut
+
+# User in docker-Gruppe?
+groups
+# → Sollte docker enthalten, sonst: sudo usermod -a -G docker $USER
+
+# Danach neu anmelden oder:
+newgrp docker
+```
+
+#### Nach der Einrichtung
+
+Beim nächsten Build:
+
+```bash
+cd ansible && bash build_and_deploy.sh --update
+# ✅ Kein Passwort-Prompt!
+# Docker startet neu im Hintergrund während Build kompiliert
 ```
 
 ---
@@ -123,8 +251,57 @@ erreichbar ist.
 ```bash
 # Status prüfen
 cat /proc/sys/fs/binfmt_misc/qemu-aarch64
-docker buildx inspect pi-builder | grep Platforms
+docker buildx inspect | grep Platforms
 # → Platforms: linux/amd64, linux/arm64, ...
+```
+
+---
+
+### QEMU binfmt-Handler · Laufzeit-Updates
+
+Die `qemu-aarch64`-Emulatoren werden von **tonistiigi/binfmt** verwaltet. Diese Container-Images
+enthalten aktuelle QEMU-Workarounds für Hardening-Kernel wie Gentoo's *ASLR + Hardened PIE*.
+
+**Problem auf Gentoo (vor v2.3.2):**
+- QEMU aarch64 segfault bei Gentoo's hardenem Kernel (randomize_va_space=2)
+- gRPC HTTP/2-Rahmen-Fehler beim Starten von docker-container-driver Builder
+- `docker buildx create --name pi-builder` → `error reading server preface: http2: frame too large`
+
+**Lösung (v2.3.2+):**
+Die Python-Wrapper-Skripte `build_and_deploy.py` und `build_and_deploy.sh` kümmern sich um:
+1. **Automatisches Update** der binfmt-Handler bei `--setup-host` oder `--build`:
+   ```bash
+   docker run --privileged --rm tonistiigi/binfmt --install all
+   sudo systemctl restart docker
+   ```
+2. **Fallback auf stabilen Builder:** Nutze den existierenden `default` docker-driver Builder
+   statt ein neues `docker-container`-Treiben Builder zu erstellen.
+
+**Manuelle Aktualisierung (falls nötig):**
+```bash
+# Alle Emulatoren deinstallieren und neu installieren
+docker run --privileged --rm tonistiigi/binfmt --uninstall qemu-*
+docker run --privileged --rm tonistiigi/binfmt --install all
+
+# Docker-Daemon neu starten, um Handler zu laden
+sudo systemctl restart docker
+
+# Verifizierung
+docker buildx inspect | grep -A5 "Platforms:"
+# → Sollte mindestens linux/arm64 enthalten
+```
+
+**Kernel-Parameter (Gentoo-spezifisch):**
+```bash
+# Verifizieren Sie diese Werte (sonst segfault):
+cat /proc/sys/vm/mmap_rnd_bits        # Sollte 28 sein (optimal für QEMU)
+cat /proc/sys/kernel/randomize_va_space  # 0 oder 1 sind OK, 2 verursacht QEMU-Segfault
+```
+
+Falls `randomize_va_space=2`, deaktivieren Sie ASLR:
+```bash
+echo "kernel.randomize_va_space = 0" | sudo tee -a /etc/sysctl.d/00-qemu-fix.conf
+sudo sysctl -p /etc/sysctl.d/00-qemu-fix.conf
 ```
 
 ---

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Abhängigkeiten: pip install python-dotenv ansible  (z.B. in ~/ansible-venv)
+# Abhängigkeiten: pip install python-dotenv ansible  (z.B. in ~/ansible-venv oder ./ansible-venv-local)
 """build_and_deploy.py – Docker-Image bauen und auf Pi deployen
 
 Verwendung (aus dem ansible/-Ordner oder Repo-Root):
@@ -9,9 +9,18 @@ Verwendung (aus dem ansible/-Ordner oder Repo-Root):
   ./ansible/build_and_deploy.py --setup-host   # Gentoo Build-Host einrichten (Docker, QEMU, buildx)
 
 Voraussetzungen (einmalig):
-  1. docker buildx create --use --name pi-builder  (oder: --setup-host)
-  2. ansible-vault encrypt ansible/group_vars/all/vault.yml
-  3. echo 'VaultPasswort' > ~/.pi-daemon-vault-pass && chmod 600 ~/.pi-daemon-vault-pass
+  1. Virtual Environment mit Ansible:
+     cd <repo-root>
+     python3 -m venv ansible-venv-local --copies
+     ansible-venv-local/bin/pip install ansible python-dotenv pyotp
+  2. docker buildx create --use --name pi-builder  (oder: --setup-host)
+  3. ansible-vault encrypt ansible/group_vars/all/vault.yml
+  4. echo 'VaultPasswort' > ~/.pi-daemon-vault-pass && chmod 600 ~/.pi-daemon-vault-pass
+  5. (Optional) bash ansible/setup-sudo-nopasswd.sh  # Sudo ohne Passwort für Docker
+
+Hinweis: Der Build fragt nach dem Sudo-Passwort für docker systemctl restart.
+Geben Sie 'bash ansible/setup-sudo-nopasswd.sh' ein, um dies zu automatisieren
+(setzt NOPASSWD-Regeln in /etc/sudoers.d/vogel-kamera-buildx).
 """
 
 import argparse
@@ -31,6 +40,13 @@ try:
 except ImportError:
     print("❌ python-dotenv nicht installiert: pip install python-dotenv", file=sys.stderr)
     sys.exit(1)
+
+# Versuche pyotp zu laden (optional, für E2E-Tests)
+try:
+    import pyotp
+    HAS_PYOTP = True
+except ImportError:
+    HAS_PYOTP = False
 
 # ── ANSI-Farben ──────────────────────────────────────────────────────────────
 BOLD   = "\033[1m"
@@ -110,17 +126,23 @@ def load_env() -> dict:
 
 # ── Tool-Lookups ─────────────────────────────────────────────────────────────
 def find_tool(name: str) -> str | None:
-    """Sucht Tool im PATH, danach in bekannten Venv-Verzeichnissen."""
-    if path := shutil.which(name):
-        return path
+    """Sucht Tool in bekannten Venv-Verzeichnissen, dann im PATH."""
+    # Lokale Venvs haben Priorität vor PATH (kann alte, beschädigte Installationen überschreiben)
     for d in (
+        REPO_ROOT / "ansible-venv-local" / "bin",
         REPO_ROOT / ".venv" / "bin",
         Path.home() / "ansible-venv" / "bin",
-        Path.home() / ".local" / "bin",
     ):
         candidate = d / name
         if candidate.is_file() and os.access(candidate, os.X_OK):
             return str(candidate)
+    # Dann im PATH suchen
+    if path := shutil.which(name):
+        return path
+    # Fallback: .local/bin als letztes (kann alte Installation sein)
+    candidate = Path.home() / ".local" / "bin" / name
+    if candidate.is_file() and os.access(candidate, os.X_OK):
+        return str(candidate)
     return None
 
 
@@ -129,8 +151,10 @@ def require_tool(name: str) -> str:
         return path
     print(red(f"❌ '{name}' nicht gefunden."), file=sys.stderr)
     if name == "ansible-playbook":
-        print("   python3 -m venv ~/ansible-venv && ~/ansible-venv/bin/pip install ansible",
-              file=sys.stderr)
+        print("   Bitte installieren Sie Ansible in einem venv:", file=sys.stderr)
+        print(f"   cd {REPO_ROOT}", file=sys.stderr)
+        print("   python3 -m venv ansible-venv-local --copies", file=sys.stderr)
+        print("   ansible-venv-local/bin/pip install ansible python-dotenv pyotp", file=sys.stderr)
     sys.exit(1)
 
 
@@ -343,14 +367,60 @@ def setup_host() -> None:
     print("   Danach: ./ansible/build_and_deploy.py --install")
 
 
+# ── QEMU binfmt-Handler ────────────────────────────────────────────────────────
+def ensure_qemu_binfmt_handlers() -> None:
+    """Aktualisiert QEMU-Emulatoren für ARM64 Cross-Compilation.
+    
+    Gentoo + Hardened-Kernel: QEMU aarch64 segfault bei ASLR (randomize_va_space=2).
+    Workaround: tonistiigi/binfmt mit aktuellen Patches installieren.
+    
+    Siehe: https://github.com/tonistiigi/binfmt/issues/215
+           https://github.com/docker/buildx/issues/3170
+    """
+    print(yellow("🔄 QEMU binfmt-Handler aktualisieren (tonistiigi/binfmt)..."))
+    try:
+        # Deinstalliere alte QEMU-Versionen
+        run_capture(["docker", "run", "--privileged", "--rm", "tonistiigi/binfmt", 
+                     "--uninstall", "qemu-*"])
+        
+        # Installiere alle Emulatoren (mit aktuellen Workarounds für Gentoo/ASLR)
+        result = run(["docker", "run", "--privileged", "--rm", "tonistiigi/binfmt",
+                      "--install", "all"])
+        
+        # Docker-Daemon neu starten, um Handler zu laden
+        print(yellow("   🔄 Docker-Daemon wird neu gestartet..."))
+        run(["sudo", "systemctl", "restart", "docker"])
+        time.sleep(3)  # Gib Docker Zeit zum Hochfahren
+        
+        print(green("   ✅ binfmt-Handler aktualisiert"))
+    except Exception as e:
+        print(yellow(f"   ⚠ binfmt-Update fehlgeschlagen: {e}"))
+        print("   (Weitermachen – fallback auf existierenden Builder)")
+
+
 # ── Docker Build ──────────────────────────────────────────────────────────────
 def docker_build(no_cache: bool) -> None:
-    if run_capture(["docker", "buildx", "inspect", "pi-builder"]).returncode != 0:
-        print(yellow("⚙ Erstelle docker buildx Kontext 'pi-builder'..."))
-        run(["docker", "buildx", "create", "--name", "pi-builder", "--use"])
-        run(["docker", "buildx", "inspect", "--bootstrap"])
-    run(["docker", "buildx", "use", "pi-builder"])
-
+    """Baut ARM64 Docker-Image mit buildx für Raspberry Pi Deployment.
+    
+    **Gentoo x86_64 → ARM64 Cross-Compilation:**
+    - Verwendet tonistiigi/binfmt für QEMU aarch64 Emulation
+    - Nutzt den stabilen 'default' docker-driver Builder
+    - Vermeidet gRPC-Fehler beim Erstellen neuer docker-container-driver Builder
+    
+    **Fehlerbehandlung bei gRPC Frame-Größe (v2.3.2+):**
+    - Symptom: "error reading server preface: http2: frame too large"
+    - Ursache: QEMU aarch64 Segfault auf Gentoo Hardened-Kernel (ASLR-Patches)
+    - Lösung: ensure_qemu_binfmt_handlers() + docker-driver Builder
+    
+    Siehe auch: ansible/README.md "QEMU binfmt-Handler · Laufzeit-Updates"
+    """
+    # ── Stelle sicher, dass QEMU binfmt-Handler aktuell sind ────────────────
+    ensure_qemu_binfmt_handlers()
+    
+    # ── Nutze den default builder (der bereits auf Gentoo funktioniert) ────────
+    print(yellow("📍 Verwende docker buildx 'default' Builder..."))
+    run(["docker", "buildx", "use", "default"])
+    
     print(f"\n{bold('📦 Baue Docker-Image für linux/arm64...')}")
     print(f"   Dockerfile: {DOCKERFILE}")
     print(f"   Build-Kontext: {REPO_ROOT}\n")
@@ -423,12 +493,20 @@ def ansible_deploy(env: dict, mode: str, ansible: str) -> None:
     if mode == "deploy":
         print(bold("🚀 Ansible – Voll-Deployment (Erstinstall)..."))
         run([ansible, "playbooks/deploy.yml", *vault_opts])
+        print(bold("📊 Ansible – Health-Monitoring Setup..."))
+        run([ansible, "-i", f"{env['PI_HOST']},", "-u", env["PI_USER"], 
+             "--private-key", env["PI_SSH_KEY"],
+             "playbooks/setup_pi_daemon_health_monitoring.yml", *vault_opts])
     elif mode == "hotpatch":
         print(bold("🩹 Ansible – Hotpatch (pi_daemon_secure.py)..."))
         run([ansible, "playbooks/hotpatch.yml", *vault_opts])
     else:
         print(bold("🔄 Ansible – Image-Update..."))
         run([ansible, "playbooks/update.yml", *vault_opts])
+        print(bold("📊 Ansible – Health-Monitoring Setup..."))
+        run([ansible, "-i", f"{env['PI_HOST']},", "-u", env["PI_USER"], 
+             "--private-key", env["PI_SSH_KEY"],
+             "playbooks/setup_pi_daemon_health_monitoring.yml", *vault_opts])
 
 
 # ── TOTP-Generierung ──────────────────────────────────────────────────────────
@@ -437,11 +515,9 @@ def _generate_totp(secret: str) -> str:
         r = run_capture([oathtool, "--base32", "--totp", secret])
         if r.returncode == 0:
             return r.stdout.decode().strip()
-    try:
-        import pyotp
+    if HAS_PYOTP:
         return pyotp.TOTP(secret).now()
-    except ImportError:
-        return ""
+    return ""
 
 
 # ── E2E-Test ──────────────────────────────────────────────────────────────────
@@ -487,7 +563,10 @@ def run_e2e(env: dict) -> None:
         totp = _generate_totp(totp_secret)
         if not totp:
             print(yellow("   ⚠ TOTP konnte nicht generiert werden."))
-            print(  "     Bitte 'oathtool' (oath-toolkit) oder pyotp installieren.")
+            if not shutil.which("oathtool"):
+                print(  "     Bitte 'oathtool' installieren: apt install oathtool")
+            if not HAS_PYOTP:
+                print(  "     ODER 'pyotp' installieren: pip install pyotp")
         else:
             # [3] Login → JWT
             print("   [3] Login (JWT-Token)... ", end="", flush=True)

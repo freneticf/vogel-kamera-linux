@@ -683,27 +683,32 @@ class UnifiedCameraMonitor:
                 except Exception as e:
                     logger.error(f"❌ Video-Thread Exception: {e}")
             
-            # ===== THREAD 2: Audio mit arecord =====
+            # ===== THREAD 2: Audio mit ffmpeg (robuste Verarbeitung) =====
             def run_audio():
                 if not self.enable_audio or not self.audio_device:
                     logger.info("ℹ️  Audio deaktiviert oder kein Device")
                     return
                 
-                logger.info(f"🎤 Audio-Thread startet: arecord -D {self.audio_device}")
+                logger.info(f"🎤 Audio-Thread startet: ffmpeg -i {self.audio_device}")
                 try:
-                    arecord_cmd = [
-                        'arecord',
-                        '-D', self.audio_device,
-                        '-f', 'S16_LE',
-                        '-r', '44100',
-                        '-c', '1',
-                        '-t', 'wav',
-                        '-d', str(duration_s),  # EXAKT: Duration in Sekunden (gleich wie Video!)
+                    # ffmpeg mit ROBUSTEREN Audio-Filtern (vereinfacht, weniger fehleranfällig)
+                    ffmpeg_cmd = [
+                        'ffmpeg',
+                        '-hide_banner',
+                        '-loglevel', 'warning',
+                        '-f', 'alsa',
+                        '-i', self.audio_device,
+                        '-t', str(duration_s),
+                        '-af', 'highpass=f=80,volume=1.5',  # Simplified: Highpass + Verstärkung
+                        '-acodec', 'pcm_s16le',
+                        '-ar', '48000',  # 48kHz wie professionelle Audio (nicht 44100)
+                        '-ac', '1',      # Mono
+                        '-y',
                         str(audio_file)
                     ]
                     
                     audio_proc = subprocess.Popen(
-                        arecord_cmd,
+                        ffmpeg_cmd,
                         stdout=subprocess.PIPE,
                         stderr=subprocess.PIPE,
                         text=True
@@ -711,7 +716,7 @@ class UnifiedCameraMonitor:
                     stdout, stderr = audio_proc.communicate()
                     
                     if audio_proc.returncode == 0:
-                        logger.info(f"✅ Audio-Thread erfolgreich")
+                        logger.info(f"✅ Audio-Thread erfolgreich (48kHz)")
                     else:
                         logger.error(f"❌ Audio-Thread Fehler: {stderr}")
                 except Exception as e:
@@ -1121,7 +1126,8 @@ def main():
     parser.add_argument('--autofocus-range', type=str, default='macro', help='Autofokus-Bereich (default: macro)')
     parser.add_argument('--roi', type=str, help='Region of Interest im Format x,y,w,h (optional)')
     
-    parser.add_argument('--slowmo', action='store_true', help='Zeitlupen-Modus (1536x864 @ 120fps, überschreibt Auflösung/FPS)')
+    parser.add_argument('--slowmo', action='store_true', help='Zeitlupen-Modus HQ (2304x1296 @ 56fps, überschreibt Auflösung/FPS)')
+    parser.add_argument('--slowmo-fast', action='store_true', help='Zeitlupen-Modus Ultra-Highspeed (1536x864 @ 120fps, überschreibt Auflösung/FPS)')
     parser.add_argument('--enable-audio', action='store_true', help='Audio-Aufnahme aktivieren')
     parser.add_argument('--audio-only', action='store_true', help='Nur Audio aufnehmen (kein Video)')
     parser.add_argument('--manual-record', action='store_true', help='Manuelle Aufnahme ohne Trigger/Erkennung')
@@ -1139,7 +1145,17 @@ def main():
     # Zeitlupen-Modus: Überschreibe Auflösung und FPS
     if args.slowmo:
         print("=" * 70)
-        print("🎬 ZEITLUPEN-MODUS AKTIVIERT")
+        print("🎬 ZEITLUPEN-MODUS HQ AKTIVIERT (Bessere Qualität)")
+        print(f"📹 Auflösung: {2304}x{1296} @ {56}fps")
+        print("=" * 70 + "\n")
+        args.recording_width = 2304
+        args.recording_height = 1296
+        args.recording_fps = 56
+    
+    # Zeitlupen-Modus Fast: Überschreibe Auflösung und FPS
+    if args.slowmo_fast:
+        print("=" * 70)
+        print("🎬 ZEITLUPEN-MODUS 120FPS AKTIVIERT (Ultra-Highspeed)")
         print(f"📹 Auflösung: {1536}x{864} @ {120}fps")
         print("=" * 70 + "\n")
         args.recording_width = 1536
