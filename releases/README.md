@@ -4,8 +4,40 @@ Hier finden Sie die vollständige Dokumentation aller Versionen des vogel-kamera
 
 ## 🚀 Aktuelle Version
 
-**Version 2.3.5** - "Slow-Motion Upgrade · High-Performance Recording" 🎬
+**Version 2.4.2** - "Erkennungsziele & Online-Hilfe" 🐕
 - **Branch:** main
+- **Release Notes:** [v2.4.2/RELEASE_NOTES_v2.4.2.md](v2.4.2/RELEASE_NOTES_v2.4.2.md)
+- **Release Date:** 2026-11-07
+- **🔧 Fix:** Erkennungsziel Hund/Katze/Alle 4 bleibt nach Neustart erhalten
+- **📚 Doku:** Online-Hilfe der Web-GUI und Wiki aktualisiert
+
+## 📦 Vorherige Versionen
+
+### Version 2.4.1 - "Security-Audit" 🔒
+- **Release Notes:** [v2.4.1/RELEASE_NOTES_v2.4.1.md](v2.4.1/RELEASE_NOTES_v2.4.1.md)
+- **Release Date:** 2026-11-07
+
+### Version 2.4.0 - "Powerbank-Überwachung" 🔋
+- **Release Notes:** [v2.4.0/RELEASE_NOTES_v2.4.0.md](v2.4.0/RELEASE_NOTES_v2.4.0.md)
+- **Release Date:** 2026-11-07
+
+### Version 2.3.9 - "Sicherheit, Code-Struktur & CI" 🔒
+- **Release Notes:** [v2.3.9/RELEASE_NOTES_v2.3.9.md](v2.3.9/RELEASE_NOTES_v2.3.9.md)
+- **Release Date:** 2026-11-06
+
+### Version 2.3.8 - "Ansible Toolchain & E2E Testing Improvements" 🔧
+- **Release Notes:** [v2.3.8/RELEASE_NOTES_v2.3.8.md](v2.3.8/RELEASE_NOTES_v2.3.8.md)
+- **Release Date:** 2026-08-22
+
+### Version 2.3.7 - "Health-Check Resilience & Proactive Monitoring" 🏥
+- **Release Notes:** [v2.3.7/RELEASE_NOTES_v2.3.7.md](v2.3.7/RELEASE_NOTES_v2.3.7.md)
+- **Release Date:** 2026-07-27
+
+### Version 2.3.6 - "Ansible Toolchain Verbesserung" 🐧
+- **Release Notes:** [v2.3.6/RELEASE_NOTES_v2.3.6.md](v2.3.6/RELEASE_NOTES_v2.3.6.md)
+- **Release Date:** 2026-07-27
+
+### Version 2.3.5 - "Slow-Motion Upgrade · High-Performance Recording" 🎬
 - **Release Notes:** [v2.3.5/RELEASE_NOTES_v2.3.5.md](v2.3.5/RELEASE_NOTES_v2.3.5.md)
 - **Release Date:** 2026-05-05
 - **🆕 Features:**
@@ -19,8 +51,6 @@ Hier finden Sie die vollständige Dokumentation aller Versionen des vogel-kamera
   - Beide Slowmo-Varianten persistent speicherbar
 - **Kompatibel:** Raspberry Pi OS, Gentoo Linux
 
-## 📦 Vorherige Versionen
-
 ### Version 2.3.4 - "Audio Quality Upgrade · Professional Recording" 🎤
 - **Release Notes:** [v2.3.4/RELEASE_NOTES_v2.3.4.md](v2.3.4/RELEASE_NOTES_v2.3.4.md)
 - **Release Date:** 2026-05-05
@@ -28,7 +58,7 @@ Hier finden Sie die vollständige Dokumentation aller Versionen des vogel-kamera
   - 🎤 **Professionelle Audio-Aufnahme mit ffmpeg** (statt arecord)
   - 🎤 **48kHz Sample-Rate überall** (Video+Audio, Audio-only, Fallback)
   - 🎤 **Audio-Filterung:** Hochpass @ 80Hz + Volume 1.5x
-  - 📚 **AUDIO_QUALITY_IMPROVEMENTS.md** + **AUDIO_UPGRADE_CHECKLIST.md**
+  - 📚 [AUDIO_QUALITY_IMPROVEMENTS.md](v2.3.4/AUDIO_QUALITY_IMPROVEMENTS.md) + [AUDIO_UPGRADE_CHECKLIST.md](v2.3.4/AUDIO_UPGRADE_CHECKLIST.md)
 - **🔧 Verbesserungen:**
   - Einheitliche Audio-Pipeline für alle Modi
   - Robustere Fehlerbehandlung (Non-blocking I/O)

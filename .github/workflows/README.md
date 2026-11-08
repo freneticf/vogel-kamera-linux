@@ -1,4 +1,25 @@
-# 🤖 GitHub Actions - Automatische YouTube-Statistiken
+# 🤖 GitHub Actions
+
+| Workflow | Auslöser | Zweck |
+|----------|----------|-------|
+| [`ci.yml`](ci.yml) | Push auf `main`/`devel`, Pull Requests | Lint (ruff, shellcheck) + Tests für den pi-daemon |
+| [`update-youtube-stats.yml`](update-youtube-stats.yml) | täglich 06:00 UTC | YouTube-Statistiken in der README aktualisieren |
+
+## ✅ CI lokal ausführen
+
+```bash
+pip install ruff==0.17.4 -r unified-monitor-client/requirements-test.txt
+ruff check .                                   # Konfiguration: ruff.toml
+git ls-files '*.sh' | grep -v '^legacy/' | xargs shellcheck -S warning
+pytest unified-monitor-client/tests
+```
+
+Die Tests brauchen weder Raspberry Pi noch Kamera: Secrets und Videoordner
+werden in `unified-monitor-client/tests/conftest.py` durch Testwerte ersetzt.
+
+---
+
+# 📺 Automatische YouTube-Statistiken
 
 ## ✨ Was macht diese Action?
 
@@ -105,7 +126,7 @@ on:
 ```mermaid
 graph LR
     A[GitHub Actions] --> B[Checkout Code]
-    B --> C[Python 3.11 Setup]
+    B --> C[Python 3.13 Setup]
     C --> D[Dependencies installieren]
     D --> E[YouTube API Call]
     E --> F{Änderungen?}
@@ -118,8 +139,8 @@ graph LR
 ### Schritte im Detail:
 
 1. **Checkout Repository** - Holt aktuellen Code
-2. **Setup Python 3.11** - Bereitet Python-Umgebung vor
-3. **Install Dependencies** - Installiert `google-api-python-client`
+2. **Setup Python 3.13** - Bereitet Python-Umgebung vor
+3. **Install Dependencies** - Installiert die Pakete aus `tools/requirements-youtube.txt` (feste Versionen)
 4. **Update YouTube Statistics** - Führt `tools/update_youtube_stats.py` aus
 5. **Check for Changes** - Prüft ob README.md geändert wurde
 6. **Commit and Push** - Committet nur wenn Änderungen vorhanden
@@ -351,17 +372,8 @@ error: failed to push some refs
 - ✅ Keine manuellen Merges nötig
 - ✅ Vollautomatischer Workflow
 
-**Lösung 2: Workflow erstellt automatisch Branch**
-
-Falls Branch Protection aktiv bleibt:
-- Action erstellt Branch: `youtube-stats-update-YYYYMMDD-HHMMSS`
-- Pusht Änderungen auf diesen Branch
-- Du musst Branch manuell mergen
-
-**Branches finden:**
-```
-https://github.com/kamera-linux/vogel-kamera-linux/branches
-```
+Ohne Bypass schlägt der Lauf fehl (rot in der Actions-Übersicht) – es wird
+kein Ersatz-Branch mehr angelegt.
 
 **Detaillierte Anleitung:**
 Siehe: `.github/BRANCH_PROTECTION_SETUP.md`

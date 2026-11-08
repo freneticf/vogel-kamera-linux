@@ -4,43 +4,56 @@
 
 ![Vogel-Kamera-Linux Modell 2026-01](assets/vogelhaus-kamera-solo-neu-3.png)
 
-## Release v2.3.8 — Ansible Toolchain & Web-GUI Verbesserungen 🔧
+## Release v2.4.2 — Erkennungsziele & Online-Hilfe 🐕
 
-- **Version:** v2.3.8 (22. August 2026)
-- **🎬 Neue Features – High-Performance Zeitlupe:**
-  - **Zeitlupen-Modus HQ:** 2304×1296 @ 56fps (1.9× langsamer, bessere Qualität)
-  - **Zeitlupen-Modus 120fps:** 1536×864 @ 120fps (4× langsamer, ultra-highspeed)
-  - **Automatische Auflösungswahl** basierend auf FPS-Anforderung
-  - **Beide Modi im Web-Dashboard wählbar** (Recording Profiles)
+- **Version:** v2.4.2 (7. November 2026)
+- **🔧 Fix:** Erkennungsziel Hund, Katze oder „Alle 4“ bleibt nach einem Neustart erhalten
+- **📚 Online-Hilfe** in der Web-GUI aktualisiert (Zeitlupen-Profile, Erkennungsziele, Powerbank, Sicherheit)
+- **📖 [Wiki](https://github.com/kamera-linux/vogel-kamera-linux/wiki)** komplett überarbeitet
 
-- **✨ Verbesserungen:**
-  - Kamera-Auflösung optimiert für höhere Framerates
-  - CPU-Auslastung optimiert (~60% bei HQ-Slowmo, ~75% bei 120fps)
-  - Bessere Flugbewegungsanalyse durch höhere Auflösung bei Zeitlupen
-  - Profile persistent gespeichert
-
-- **🔧 Technische Änderungen:**
-  - `pi_daemon_secure.py` RECORDING_PROFILES + Resolution Map
-  - Legacy Scripts: `--slowmo` (HQ) + `--slowmo-fast` (120fps)
-  - Wiki: Recording-Modes.md dokumentiert mit Performance-Vergleich
-
-- **📚 Dokumentation:**
-  - Recording-Modes.md: Slowmo-Modi mit Qualitäts-Vergleich
-  - Release Notes: v2.3.5 mit Performance-Daten
-
-**Deployment:** [`ansible/build_and_deploy.sh --hotpatch`](ansible/build_and_deploy.sh)  
+**Update:** [`./ansible/build_and_deploy.sh --update`](ansible/build_and_deploy.sh)  
 **Changelog:** [`CHANGELOG.md`](CHANGELOG.md)  
-**Release Notes:** [`releases/v2.3.5/`](releases/v2.3.5/RELEASE_NOTES_v2.3.5.md)
+**Release Notes:** [`releases/v2.4.2/`](releases/v2.4.2/RELEASE_NOTES_v2.4.2.md)
 
-[![Version](https://img.shields.io/badge/Version-v2.3.8-brightgreen)](https://github.com/kamera-linux/vogel-kamera-linux/releases/tag/v2.3.8)
+[![Version](https://img.shields.io/badge/Version-v2.4.2-brightgreen)](https://github.com/kamera-linux/vogel-kamera-linux/releases/tag/v2.4.2)
 [![Camera Controls](https://img.shields.io/badge/Camera-10%20Parameters-blue)]()
 [![Slow-Motion](https://img.shields.io/badge/Slow--Motion-2304x1296%40%2056fps-ff9800)]()
 [![Security](https://img.shields.io/badge/Auth-JWT%20%2B%20TOTP-critical)]()
+[![CI](https://github.com/kamera-linux/vogel-kamera-linux/actions/workflows/ci.yml/badge.svg)](https://github.com/kamera-linux/vogel-kamera-linux/actions/workflows/ci.yml)
 [![Docker Web API](https://img.shields.io/badge/Architecture-Docker%20Web%20API-success)]()
+
+### v2.4.1 (Archiv)
+**Security-Audit**
+- **Version:** v2.4.1 (7. November 2026)
+- Alle Funde aus dem [Security-Audit](docs/SECURITY-AUDIT-2026-11.md) behoben, SSH nur mit Schlüssel
+- Siehe [Archiv-Release](releases/v2.4.1/RELEASE_NOTES_v2.4.1.md) für Details
+
+### v2.4.0 (Archiv)
+**Powerbank-Überwachung**
+- **Version:** v2.4.0 (7. November 2026)
+- Anker Prime 27K/250W per Bluetooth im Webinterface, Warnung bei 10 %, Shutdown bei 5 %
+- Siehe [Archiv-Release](releases/v2.4.0/RELEASE_NOTES_v2.4.0.md) für Details
+
+### v2.3.9 (Archiv)
+**Sicherheit, Code-Struktur & CI**
+- **Version:** v2.3.9 (6. November 2026)
+- Login-Token nicht mehr in URLs, Daemon als Paket `pi_daemon/`, CI mit ruff + pytest
+- Siehe [Archiv-Release](releases/v2.3.9/RELEASE_NOTES_v2.3.9.md) für Details
+
+### v2.3.8 (Archiv)
+**Ansible Toolchain & E2E-Test Verbesserungen**
+- **Version:** v2.3.8 (22. August 2026)
+- Siehe [Archiv-Release](releases/v2.3.8/RELEASE_NOTES_v2.3.8.md) für Details oder CHANGELOG.md
+
+### v2.3.5 (Archiv)
+**Slow-Motion Upgrade · High-Performance Recording**
+- **Version:** v2.3.5 (5. Mai 2026)
+- Zeitlupe HQ 2304×1296 @ 56fps und 120fps-Modus, beide im Web-Dashboard wählbar
+- Siehe [Archiv-Release](releases/v2.3.5/RELEASE_NOTES_v2.3.5.md) für Details
 
 ### v2.3.4 (Archiv)
 **Audio Quality Upgrade · Professional Recording**
-- **Version:** v2.3.5 (5. Mai 2026)
+- **Version:** v2.3.4 (5. Mai 2026)
 - Siehe [Archiv-Release](releases/v2.3.4/RELEASE_NOTES_v2.3.4.md) für Details oder CHANGELOG.md
 
 ### v2.2.5 (Archiv)
@@ -99,11 +112,11 @@ cp ansible/.env.example ansible/.env && nano ansible/.env
 
 | 🎬 Video | 📅 Datum | ⏱️ Dauer | 👁️ Views | 👍 Likes | 💬 Komm. |
 |----------|----------|----------|----------|----------|---------|
-| [**🐦 Haussperlinge am Vogelhaus (Zeitlupe)**](https://www.youtube.com/watch?v=XdpjpbCXhQE) | 29.08.2026 | 1:56 | 141 | 4 | 1 |
+| [**🐦 Haussperlinge am Vogelhaus (Zeitlupe)**](https://www.youtube.com/watch?v=XdpjpbCXhQE) | 29.08.2026 | 1:56 | 142 | 4 | 1 |
 | [**🐦 Sumpfmeise beim Hamstern (Zeitlupe)**](https://www.youtube.com/watch?v=pee3rH2nBnI) | 23.08.2026 | 2:15 | 99 | 6 | 0 |
-| [**🐦 Vögel am Vogelhaus (Zeitlupe)**](https://www.youtube.com/watch?v=XoG5j0GHGcM) | 12.08.2026 | 3:02 | 64 | 7 | 0 |
-| [**🤖 KI erkennt Haussperling am Futterhaus 🐦**](https://www.youtube.com/watch?v=GjOl43K4uUI) | 02.05.2026 | 1:53 | 143 | 6 | 1 |
-| [**Haussperling in 4K – Nahaufnahme am neuen Vogelfut...**](https://www.youtube.com/watch?v=utk6eLfYg_4) | 01.05.2026 | 2:16 | 58 | 7 | 0 |
+| [**🐦 Vögel am Vogelhaus (Zeitlupe)**](https://www.youtube.com/watch?v=XoG5j0GHGcM) | 12.08.2026 | 3:02 | 65 | 7 | 0 |
+| [**🤖 KI erkennt Haussperling am Futterhaus 🐦**](https://www.youtube.com/watch?v=GjOl43K4uUI) | 02.05.2026 | 1:53 | 144 | 6 | 1 |
+| [**Haussperling in 4K – Nahaufnahme am neuen Vogelfut...**](https://www.youtube.com/watch?v=utk6eLfYg_4) | 01.05.2026 | 2:16 | 60 | 7 | 0 |
 | [**Kernbeißer in 4K – Nahaufnahme am neuen Vogelfutte...**](https://www.youtube.com/watch?v=Jf6locShc_c) | 01.05.2026 | 2:22 | 62 | 6 | 1 |
 | [**Stieglitz in 4K – Nahaufnahme am neuen Vogelfutter...**](https://www.youtube.com/watch?v=0QABEj8JjS0) | 10.04.2026 | 3:20 | 112 | 6 | 0 |
 | [**🐦Kohlmeise am Futterhaus - Zeitlupen-Aufnahmen**](https://www.youtube.com/watch?v=-9orWyLCK3A) | 07.04.2026 | 2:23 | 59 | 5 | 0 |
@@ -111,16 +124,16 @@ cp ansible/.env.example ansible/.env && nano ansible/.env
 | [**🐦 Vogel-Beobachtung mit neuem Futterhaus**](https://www.youtube.com/watch?v=Y3KsGb4NkbU) | 23.03.2026 | 0:55 | 34 | 5 | 0 |
 | [**🐦 Vogel-Beobachtung von einem Star am Futterhaus**](https://www.youtube.com/watch?v=0bNoF5cutnc) | 06.03.2026 | 2:33 | 74 | 6 | 0 |
 | [**🐦 Vogel-Beobachtung mit KI: Meisen, Rotkehlchen un...**](https://www.youtube.com/watch?v=1Mrq4oIzckI) | 30.11.2025 | 2:38 | 196 | 1 | 2 |
-| [**3 Vogelarten live am Futterhaus - KI erkennt Kohlm...**](https://www.youtube.com/watch?v=uZm4Ao9JHoo) | 24.11.2025 | 3:10 | 184 | 6 | 1 |
+| [**3 Vogelarten live am Futterhaus - KI erkennt Kohlm...**](https://www.youtube.com/watch?v=uZm4Ao9JHoo) | 24.11.2025 | 3:10 | 185 | 6 | 1 |
 | [**🐦 Wunderschönes Rotkehlchen beim Fressen \| 4K Voge...**](https://www.youtube.com/watch?v=rWkWFUeVK0o) | 31.10.2025 | 1:58 | 80 | 6 | 0 |
 | [**🐦 Blaumeise beim Fressen \| KI-Kamera 120fps Zeitlu...**](https://www.youtube.com/watch?v=ew3l12TSn5k) | 28.10.2025 | 2:25 | 124 | 9 | 0 |
 | [**🐦 Sumpfmeise in Zeitlupe \| Futtersuche im Vogelhau...**](https://www.youtube.com/watch?v=dORu9qs8KSA) | 20.10.2025 | 2:46 | 57 | 6 | 1 |
-| [**5 Vogelarten mit Aufnahme (120fps) \| Automatische ...**](https://www.youtube.com/watch?v=k3tS0oJX7YE) | 06.10.2025 | 3:24 | 85 | 8 | 5 |
+| [**5 Vogelarten mit Aufnahme (120fps) \| Automatische ...**](https://www.youtube.com/watch?v=k3tS0oJX7YE) | 06.10.2025 | 3:24 | 87 | 8 | 5 |
 | [**🤖 KI-gesteuerte Vogelkamera \| Automatische Erkennu...**](https://www.youtube.com/watch?v=5WeZb_YVe0s) | 02.10.2025 | 5:51 | 133 | 7 | 1 |
 | [**Vogelhaus mit Kleiber  (Futtersuche in Zeitlupe)**](https://www.youtube.com/watch?v=QALijFTA_s8) | 29.09.2025 | 5:07 | 85 | 7 | 2 |
 | [**Vogelhaus mit junge Haussperlinge**](https://www.youtube.com/watch?v=3na90KiJ-J8) | 06.06.2025 | 3:11 | 61 | 6 | 0 |
 
-*Automatisch aktualisiert: 28.10.2026 12:42 Uhr (Winterzeit (MEZ))*
+*Automatisch aktualisiert: 08.11.2026 13:15 Uhr (Winterzeit (MEZ))*
 <!-- YOUTUBE_VIDEOS_END -->
 
 ## 🔩 Hardware-Stückliste
@@ -136,7 +149,7 @@ cp ansible/.env.example ansible/.env && nano ansible/.env
 | **RAM** | 8 GB LPDDR4X *(dieses System)* · alternativ: 4 GB oder 2 GB erhältlich |
 | **Netzwerk** | WLAN (Broadcom brcmfmac, 2.4/5 GHz) · Ethernet RP1 PCIe (integriert) |
 
-### 🤖 KI-Beschleuniger (AI HAD+)
+### 🤖 KI-Beschleuniger (AI HAT+)
 
 | Komponente | Details |
 |---|---|
@@ -183,8 +196,15 @@ cp ansible/.env.example ansible/.env && nano ansible/.env
 
 | Komponente | Details |
 |---|---|
-| **Powerbank** | Anker 737 Power Bank (PowerCore 26K) · 140 W USB-C · 25.600 mAh |
-| **Ausgang** | 140 W USB-C PD (kompatibel mit Raspberry Pi 5 Netzteil-Anforderung 27 W) |
+| **Powerbank** | Anker Prime Power Bank (27K, 250W) · 27.650 mAh · Bluetooth |
+| **Ausgang** | 2× USB-C + 1× USB-A, 250 W gesamt (Raspberry Pi 5 braucht 27 W) |
+| **Überwachung** | Akkustand im Webinterface, Warnung bei 10 %, Shutdown bei 5 % *(Neu in v2.4.0)* |
+
+> Die Bluetooth-Überwachung funktioniert nur mit der Anker Prime 27K/250W. Andere
+> Powerbanks laufen genauso, nur ohne Anzeige. Einrichtung:
+> [Release Notes v2.4.0](releases/v2.4.0/RELEASE_NOTES_v2.4.0.md) (Abschnitt „Einrichtung“)
+
+![Powerbank im Webinterface](assets/WebGUI-Powerbank.png)
 
 ---
 
@@ -202,6 +222,7 @@ cp ansible/.env.example ansible/.env && nano ansible/.env
 - 📁 **Automatische Dateiorganisation** nach Jahr/Woche
 - ⚙️ **Flexible Konfiguration** über `ansible/.env` (gitignored)
 - 📊 **Fortschrittsanzeige** während der Aufnahme
+- 🔋 **Powerbank-Überwachung** per Bluetooth mit Warnung und automatischem Shutdown *(Neu in v2.4.0)*
 - 🔄 **Automatische Video-/Audio-Synchronisation**
 - 📱 **YouTube-Integration** mit QR-Codes für mobile Nutzer
 - 🔧 **Einfache Installation** per Ansible (`build_and_deploy.sh`)
@@ -241,6 +262,7 @@ flowchart TD
 | **Transfer** | SSH-Sync zu konfigurierten Zielsystemen |
 | **Download** | Direkte Browser-Downloads von Aufnahmen |
 | **Löschen** | Verwaltung der Aufnahmen im Container |
+| **Powerbank** | Akkustand, Leistung und Temperatur der Anker-Powerbank (Bluetooth) |
 
 ### Screenshots
 
@@ -251,6 +273,10 @@ flowchart TD
 | Manuelles Video | Online-Hilfe |
 |----------------|-------------|
 | ![Web-GUI Manuelles Video](assets/WebGUI-Manuelles-Video.png) | ![Web-GUI Online-Hilfe](assets/WebGUI-OnlineHilfe.png) |
+
+**Powerbank-Überwachung** *(Neu in v2.4.0)*
+
+![Web-GUI Powerbank: Akkustand, Ausgangsleistung, Ladeleistung, Temperatur](assets/WebGUI-Powerbank.png)
 
 ### Deployment
 
@@ -387,7 +413,9 @@ vogel-kamera-linux/
 │
 ├── unified-monitor-client/           # 🐳 Docker-Container (Hauptsystem)
 │   ├── web/                          #    Web-GUI (index.html + logo.png)
-│   ├── pi_daemon_secure.py           #    ⭐ Flask HTTPS-Daemon (JWT + TOTP)
+│   ├── pi_daemon_secure.py           #    ⭐ Flask HTTPS-Daemon (JWT + TOTP) – Startpunkt
+│   ├── pi_daemon/                    #    Daemon-Code (api, camera, settings, …)
+│   ├── tests/                        #    pytest (CI)
 │   ├── requirements_daemon.txt
 │   └── README.md / SETUP_GUIDE.md
 │
@@ -535,5 +563,5 @@ MIT License - siehe [LICENSE](LICENSE)
 
 ---
 
-**Version:** v2.3.0 (5. April 2026) | **Status:** Produktionsreif ✅  
-**Raspberry Pi 5 AI HAD+ · Hailo-8 NPU · Debian Trixie (13) | Docker Web-API | JWT + TOTP 2FA**
+**Version:** v2.4.2 (7. November 2026) | **Status:** Produktionsreif ✅  
+**Raspberry Pi 5 AI HAT+ · Hailo-8 NPU · Debian Trixie (13) | Docker Web-API | JWT + TOTP 2FA | Powerbank-Überwachung (Bluetooth) | Security-Audit 11/2026**
